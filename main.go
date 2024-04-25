@@ -847,7 +847,7 @@ func main() {
 					log.Printf("Client call to _Dump_: %v\n", err)
 				} else {
 					CP := response.Object
-					fmt.Printf("\n\t % NODE %v %\n", CP.NodeID)
+					fmt.Printf("\n\t & NODE %v &\n", CP.NodeID)
 					fmt.Println("-----------------------------\n")
 					fmt.Printf("LeaderAddress: %s\n", CP.LeaderAddress)
 					var r string
