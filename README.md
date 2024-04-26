@@ -3,7 +3,9 @@
 ## Introduction
 Raft is a distributed consensus protocol designed to ensure fault-tolerant and reliable operation of a distributed system. It achieves this by establishing a leader among a group of nodes, allowing for coordinated decision-making and replication of data across multiple servers. Raft operates through a series of leader elections, where nodes compete to become the authoritative leader responsible for coordinating the system's operations. Once a leader is established, it manages the replication of data by coordinating with follower nodes, ensuring consistency and fault tolerance even in the event of node failures or network partitions. Raft provides a straightforward and understandable approach to distributed consensus, making it a popular choice for building robust distributed systems.
 
-The Raft project I have created is integrated with a simple text-based application that implements and demonstrates the Raft protocol. Using a testbed of five node, a user can send key-value pairs through the system and verify the replicated data. A user can also simulate node failure and re-entry, testing the protocol's fault tolerance. In the current state this project is in, it does not support log compaction or membership changes.
+The Raft project I have created is integrated with a simple text-based application that implements and demonstrates the Raft protocol. Using a testbed of five node, a user can send key-value pairs through the system and verify the replicated data. A user can also simulate node failure and re-entry, testing the protocol's fault tolerance. 
+
+In the current state this project is in, it does not support log compaction or membership changes. However, this project is still under development and might include it in the future.
 
 ## Usage
 Running this project will require spinning up 6 instances. I recommend using tmux for window management.
