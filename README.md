@@ -57,3 +57,5 @@ After issuing a command, dump a few of the nodes and note the changes.
 
 The protocol get really interesting when a node drops out. Simulate this with a keyboard interrupt or some other method on one of the nodes. Then try issuing a command and then bring the node back in. After the node drops out, the remaining nodes should elect a new leader, correctly apply the command, and then get the lost node up to speed once it rejoins.
 
+## Future Work
+In it's current state, this project integrates the raft protocol with the client application in a single file. This will be remedied with a more organized file structure, breaking the project into more managable pieces. Work will also be done to restructure the project to present raft as a package, available for use in other application. However, the project in it's current form will continue to be available.
