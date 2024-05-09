@@ -1,128 +1,129 @@
 package main
 
 import (
+	"bufio"
+	"fmt"
 	"log"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/rpc"
-	"bufio"
 	"os"
-	"strings"
 	"strconv"
-	"fmt"
+	"strings"
 	"time"
-	"math/rand"
 )
 
 //---------------// RANDOM STUFF //---------------//
 
-
-//catch-all rpc args/response type
-type Packet struct {
-	Stringlist		[]string
-	Intlist			[]int
-	String			string
-	Int				int
-	Bool			bool
-	Map				map[string]string
-	Object			Node
+// Helper RPC call messages
+type DumpMessage struct {
+	Object Node
 }
 
-//Raft rpc call messages and replies
+type PingMessage struct {
+	String string
+}
+
+type StartMessage struct {
+	//empty message
+}
+
+// Raft rpc call messages and replies
 type AppendEntriesMessage struct {
-	Term			int
-	LeaderID		int
-	PrevLogIndex	int
-	PrevLogTerm		int
-	Entries			[]Entry
-	LeaderCommit 	int
-	Reconstruct		int
+	Term         int
+	LeaderID     int
+	PrevLogIndex int
+	PrevLogTerm  int
+	Entries      []Entry
+	LeaderCommit int
+	Reconstruct  int
 }
 
 type AppendEntriesReply struct {
-	Term			int
-	Success			bool
+	Term    int
+	Success bool
 }
 
 type RequestVoteMessage struct {
-	Term			int
-	CandidateID		int
-	LastLogIndex	int
-	LastLogTerm		int
+	Term         int
+	CandidateID  int
+	LastLogIndex int
+	LastLogTerm  int
 }
 
 type RequestVoteReply struct {
-	Term			int
-	VoteGranted		bool
+	Term        int
+	VoteGranted bool
 }
 
 type CommandMessage struct {
-	Command			EntryCommand
+	Command EntryCommand
 }
 
 type CommandReply struct {
-	Address			string
-	Success			bool
+	Address string
+	Success bool
 }
 
-//Entries stored in each node's log
+// Entries stored in each node's log
 type Entry struct {
-	Index			int
-	Command 		EntryCommand
-	Term			int
+	Index   int
+	Command EntryCommand
+	Term    int
 }
 
-//The actual commands from the client
+// The actual commands from the client
 type EntryCommand struct {
-	Key				string
-	Value			int
+	Key   string
+	Value int
 }
 
-//Role types
+// Role types
 const (
-	Follower	=	iota
+	Follower = iota
 	Candidate
 	Leader
 )
 
-//The ports the nodes are listening on are predefined
+// The ports the nodes are listening on are predefined
 const (
-	defaultHost string = "localhost"
-	defaultPort string = "2200"
-	defaultRaftSize int = 5
-	defaultClient string = "localhost:2200"
-	defaultNode1 string = "localhost:2201"
-	defaultNode2 string = "localhost:2202"
-	defaultNode3 string = "localhost:2203"
-	defaultNode4 string = "localhost:2204"
-	defaultNode5 string = "localhost:2205"
+	defaultHost     string = "localhost"
+	defaultPort     string = "2200"
+	defaultRaftSize int    = 5
+	defaultClient   string = "localhost:2200"
+	defaultNode1    string = "localhost:2201"
+	defaultNode2    string = "localhost:2202"
+	defaultNode3    string = "localhost:2203"
+	defaultNode4    string = "localhost:2204"
+	defaultNode5    string = "localhost:2205"
 )
 
-//Network configuration data
-//Someimes a node or client will need to loop through them
+// Network configuration data
+// Someimes a node or client will need to loop through them
 var RaftNodeAddresses = []string{defaultClient, defaultNode1, defaultNode2, defaultNode3, defaultNode4, defaultNode5}
 
-//Unused at the moment
-//Could be used in the future to improve the network configuration
-//A node finds its own address
+// Unused at the moment
+// Could be used in the future to improve the network configuration
+// A node finds its own address
 func getLocalAddress() string {
-    conn, err := net.Dial("udp", "8.8.8.8:80")
-    if err != nil {
-        log.Fatal(err)
-    }
-    defer conn.Close()
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer conn.Close()
 
-    localAddr := conn.LocalAddr().(*net.UDPAddr)
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
 
-    return localAddr.IP.String()
+	return localAddr.IP.String()
 }
 
 //---------------// SERVER //---------------//
 
 func server(nodeID int) {
 	fmt.Println("Starting up node server...")
-	time.Sleep(time.Second/5)
-	
+	time.Sleep(time.Second / 5)
+
 	//Initialize node with some default data members
 	node := new(Node)
 	node.STATE_MACHINE_TABLE = make(map[string]int)
@@ -148,13 +149,13 @@ func server(nodeID int) {
 	port := strings.TrimPrefix(node.Address, "localhost:")
 	rpc.Register(node)
 	rpc.HandleHTTP()
-	listener, err := net.Listen("tcp", ":" + port)
+	listener, err := net.Listen("tcp", ":"+port)
 	if err != nil {
 		log.Fatal("listen error: ", err)
 	}
 	fmt.Printf("Listening at tcp: %v\n", port)
 	fmt.Println()
-	
+
 	//initialize timer
 	node.ElectionTimer = time.Now()
 
@@ -167,7 +168,7 @@ func server(nodeID int) {
 	}
 }
 
-//Rpc call assistance
+// Rpc call assistance
 func call(address string, method string, request interface{}, response interface{}) error {
 	client, err := rpc.DialHTTP("tcp", address)
 	if err != nil {
@@ -183,7 +184,8 @@ func call(address string, method string, request interface{}, response interface
 }
 
 func helpStartup() {
-	commands := []string{"help", "port", "client", "node", "exit", "quit"}
+	commands := []string{"help", "client", "node", "exit", "quit"}
+	fmt.Println()
 	fmt.Println("---AVAILABLE COMMANDS---")
 	for _, command := range commands {
 		fmt.Printf("%s\n", command)
@@ -192,6 +194,7 @@ func helpStartup() {
 
 func helpClient() {
 	commands := []string{"help", "ping", "dump", "exit", "quit"}
+	fmt.Println()
 	fmt.Println("---AVAILABLE COMMANDS---")
 	for _, command := range commands {
 		fmt.Printf("%s\n", command)
@@ -199,7 +202,8 @@ func helpClient() {
 }
 
 func helpNode() {
-	commands := []string{"help", "dump", "exit", "quit"}
+	commands := []string{"help", "exit", "quit"}
+	fmt.Println()
 	fmt.Println("---AVAILABLE COMMANDS---")
 	for _, command := range commands {
 		fmt.Printf("%s\n", command)
@@ -207,6 +211,7 @@ func helpNode() {
 }
 
 func helpDescriptions(role_selected string) {
+	fmt.Println()
 	switch role_selected {
 	case "client":
 		fmt.Println("help - list available commands")
@@ -223,52 +228,53 @@ func helpDescriptions(role_selected string) {
 //---------------// Node //---------------//
 
 type Node struct {
-	Runnable		bool
-    Address     	string //NodeAddress
-	LeaderAddress	string
-	NodeID			int
-	Role			int //Leader, follower, candidate
-	ElectionTimer	time.Time
-	ElectionTimeout	float64
+	Runnable        bool
+	Address         string //NodeAddress
+	LeaderAddress   string
+	NodeID          int
+	Role            int //Leader, follower, candidate
+	ElectionTimer   time.Time
+	ElectionTimeout float64
 
 	//persistent state
-	CurrentTerm		int
-	VotedFor		int
-	Log				[]Entry
+	CurrentTerm int
+	VotedFor    int
+	Log         []Entry
 
 	//volitile state
-	CommitIndex 	int
-	LastApplied 	int
+	CommitIndex int
+	LastApplied int
 
 	//only used by leaders
-	NextIndex		[]int
-	MatchIndex		[]int
+	NextIndex  []int
+	MatchIndex []int
 
 	//"Backend" store to apply clients commands
-	//a real system would have a more advanced backend
-	STATE_MACHINE_TABLE	map[string]int
+	//a real system would have a more sophisticated backend
+	STATE_MACHINE_TABLE map[string]int
 }
 
 func RoleRoutines(n *Node) {
-	for(!n.Runnable) {
+	for !n.Runnable {
 		//client tells node when it is time to start
 		//node should not begin routines until all other node are set up
+		time.Sleep(time.Second)
 	}
 
 	//tracks the nodes that are currently unresponsive
 	//used to limit the amount of prints to console
-	//only print the first time a call doesnt work
-	out := []int{0,0,0,0,0}
+	//only prints the first time a call doesnt work
+	out := []int{0, 0, 0, 0, 0}
 
 	for {
 
 		//-----FOLLOWER-----
 
 		//RPC calls will automatically be handled by the server
-		for n.Role == Follower  {
+		for n.Role == Follower {
 
 			//Check Commit Index
-			if(n.CommitIndex > n.LastApplied) {
+			if n.CommitIndex > n.LastApplied {
 				command := n.Log[n.LastApplied].Command
 				fmt.Printf("\nApplying %s %v to my state table\n", command.Key, command.Value)
 				n.STATE_MACHINE_TABLE[command.Key] = command.Value
@@ -278,7 +284,7 @@ func RoleRoutines(n *Node) {
 			//Check Election Timer
 			time_now := time.Now()
 			elapsed_time := time_now.Sub(n.ElectionTimer)
-			if(elapsed_time > time.Duration(int64(float64(time.Second)*n.ElectionTimeout))) {
+			if elapsed_time > time.Duration(int64(float64(time.Second)*n.ElectionTimeout)) {
 				//heartbeat not recieved
 				//begin election process
 				n.Role = Candidate
@@ -294,7 +300,7 @@ func RoleRoutines(n *Node) {
 		for n.Role == Candidate {
 			n.CurrentTerm++
 			n.VotedFor = n.NodeID
-			
+
 			//send request votes to all other nodes
 			vote_count := 1 //candidate votes for itself
 			votes_recieved := 0
@@ -303,15 +309,15 @@ func RoleRoutines(n *Node) {
 			message.Term = n.CurrentTerm
 			message.CandidateID = n.NodeID
 			message.LastLogIndex = len(n.Log) - 1
-			if(len(n.Log) == 0) {
+			if len(n.Log) == 0 {
 				message.LastLogTerm = 1
 			} else {
-				message.LastLogTerm = n.Log[len(n.Log) - 1].Term
+				message.LastLogTerm = n.Log[len(n.Log)-1].Term
 			}
 
 			for node := 1; node <= 5; node++ {
 				//Future work- this might be better to do in go routines
-				if(node != n.NodeID) {
+				if node != n.NodeID {
 					contact_address := RaftNodeAddresses[node]
 					if err := call(contact_address, "Node.RequestVote", &message, &reply); err != nil {
 						//log.Printf("Candidate call to _RequestVote_: %v\n", err)
@@ -321,10 +327,10 @@ func RoleRoutines(n *Node) {
 						//Negative votes are just ignored
 						node_term := reply.Term
 						votes_recieved++
-						if(reply.VoteGranted == true && node_term <= n.CurrentTerm) {
+						if reply.VoteGranted && node_term <= n.CurrentTerm {
 							vote_count++
 						} else {
-							if(node_term > n.CurrentTerm) {
+							if node_term > n.CurrentTerm {
 								n.CurrentTerm = node_term
 								n.Role = Follower
 								fmt.Println("Discovered node is behind in RequestVote: Candidate -> Follower")
@@ -335,7 +341,7 @@ func RoleRoutines(n *Node) {
 					}
 				}
 			}
-			if(vote_count > 2 && n.Role != Follower) {
+			if vote_count > 2 && n.Role != Follower {
 				//got the majority of votes
 				//advance term to make sure a new candidate doesnt get ahead before heartbeats
 				n.CurrentTerm++
@@ -350,78 +356,78 @@ func RoleRoutines(n *Node) {
 				}
 			} else {
 				//Failed to be elected
-				n.VotedFor = 0 
+				n.VotedFor = 0
 				fmt.Println("\nFailed to be elected. Candidate -> Follower")
 				n.Role = Follower
 				n.ElectionTimer = time.Now()
 			}
 
-		//-----LEADER-----
+			//-----LEADER-----
 
-		//leader must continually send out heartbeat messages to other nodes
-		//Recieved commands from the client are handled with RPC call "Command"
-		for n.Role == Leader {
-			//Other nodes set to 0 during appendEntries
-			n.VotedFor = 0
+			//leader must continually send out heartbeat messages to other nodes
+			//Recieved commands from the client are handled with RPC call "Command"
+			for n.Role == Leader {
+				//Other nodes set to 0 during appendEntries
+				n.VotedFor = 0
 
-			n.LeaderAddress = n.Address
-			if(n.CommitIndex > n.LastApplied) {
-				//apply command
-				command := n.Log[n.LastApplied].Command
-				fmt.Printf("\nApplying %s %v to my state table\n", command.Key, command.Value)
-				n.STATE_MACHINE_TABLE[command.Key] = command.Value
-				n.LastApplied++
-			}
+				n.LeaderAddress = n.Address
+				if n.CommitIndex > n.LastApplied {
+					//apply command
+					command := n.Log[n.LastApplied].Command
+					fmt.Printf("\nApplying %s %v to my state table\n", command.Key, command.Value)
+					n.STATE_MACHINE_TABLE[command.Key] = command.Value
+					n.LastApplied++
+				}
 
-			//The heartbeats can clog up the network if they are running full speed
-			//I currently set it to send a heartbeat at least twice per the minimum election timer
-			//Future work - send heartbeats on their own timer instead of sleeping
-			time.Sleep(time.Second/2)
+				//The heartbeats can clog up the network if they are running full speed
+				//I currently set it to send a heartbeat at least twice per the minimum election timer
+				//Future work - send heartbeats on their own timer instead of sleeping
+				time.Sleep(time.Second / 2)
 
-			//prep for heartbeats
-			var RPCmessage AppendEntriesMessage
-			var RPCreply AppendEntriesReply
-			RPCmessage.Term = n.CurrentTerm
-			RPCmessage.LeaderID = n.NodeID
-			RPCmessage.PrevLogIndex = len(n.Log) - 1
-			if(len(n.Log) == 0) {
-				RPCmessage.PrevLogTerm = 0
-			} else {
-				RPCmessage.PrevLogTerm = n.Log[len(n.Log) - 1].Term
-			}
-			//Should be empty. Nodes will check this early on in AppendEntries to minimize work.
-			RPCmessage.Entries = []Entry{} 
-			RPCmessage.LeaderCommit = n.CommitIndex
+				//prep for heartbeats
+				var RPCmessage AppendEntriesMessage
+				var RPCreply AppendEntriesReply
+				RPCmessage.Term = n.CurrentTerm
+				RPCmessage.LeaderID = n.NodeID
+				RPCmessage.PrevLogIndex = len(n.Log) - 1
+				if len(n.Log) == 0 {
+					RPCmessage.PrevLogTerm = 0
+				} else {
+					RPCmessage.PrevLogTerm = n.Log[len(n.Log)-1].Term
+				}
+				//Should be empty. Nodes will check this early on in AppendEntries to minimize work.
+				RPCmessage.Entries = []Entry{}
+				RPCmessage.LeaderCommit = n.CommitIndex
 
-
-			for i := 1; i <= 5; i++ {
-				//Future work - this might also be better in a go routine
-				if(n.NodeID != i) {
-					contact_address := RaftNodeAddresses[i]
-					if err := call(contact_address, "Node.AppendEntries", &RPCmessage, &RPCreply); err != nil {
-						if(out[i-1] == 0) {
-							fmt.Printf("Unable to contact node %v in Heartbeat. Will continue trying.\n", i)
-							out[i-1] = 1
-						}
-						//log.Printf("Leader call to _AppendEntries_ as heartbeat: %v\n", err)
-					} else {
-						if(out[i-1] == 1) {
-							//First time the node has responded after comming back up
-							out[i-1] = 0
-							fmt.Printf("Node %v reconnected\n", i)
-
-							//immediately send log for reconstruction
-							RPCmessage.Entries = n.Log
-							RPCmessage.Reconstruct = 1
-							if err := call(contact_address, "Node.AppendEntries", &RPCmessage, &RPCreply); err != nil {
-
-							} else {
-								fmt.Printf("Node %v's log was filled in\n", i)
+				for i := 1; i <= 5; i++ {
+					//Future work - this might also be better in a go routine
+					if n.NodeID != i {
+						contact_address := RaftNodeAddresses[i]
+						if err := call(contact_address, "Node.AppendEntries", &RPCmessage, &RPCreply); err != nil {
+							if out[i-1] == 0 {
+								fmt.Printf("Unable to contact node %v in Heartbeat. Will continue trying.\n", i)
+								out[i-1] = 1
 							}
-						} else if(RPCreply.Success == false || n.CurrentTerm < RPCreply.Term) {
-							n.Role = Follower
-							fmt.Println("Discovered node is behind during heartbeat. Leader -> Follower")
-							break
+							//log.Printf("Leader call to _AppendEntries_ as heartbeat: %v\n", err)
+						} else {
+							if out[i-1] == 1 {
+								//First time the node has responded after comming back up
+								out[i-1] = 0
+								fmt.Printf("Node %v reconnected\n", i)
+
+								//immediately send log for reconstruction
+								RPCmessage.Entries = n.Log
+								RPCmessage.Reconstruct = 1
+								if err := call(contact_address, "Node.AppendEntries", &RPCmessage, &RPCreply); err != nil {
+
+								} else {
+									fmt.Printf("Node %v's log was filled in\n", i)
+								}
+							} else if !RPCreply.Success || n.CurrentTerm < RPCreply.Term {
+								n.Role = Follower
+								fmt.Println("Discovered node is behind during heartbeat. Leader -> Follower")
+								break
+							}
 						}
 					}
 				}
@@ -429,16 +435,15 @@ func RoleRoutines(n *Node) {
 		}
 	}
 }
-}
 
-func (s *Node) Start(message *Packet, reply *Packet) error {
+func (s *Node) Start(message *StartMessage, reply *StartMessage) error {
 	s.Runnable = true
-	time.Sleep(1/2 * time.Second)
+	time.Sleep(time.Second / 2)
 	return nil
 }
 
 func (s *Node) Command(message *CommandMessage, reply *CommandReply) error {
-	if(s.Role != Leader) {
+	if s.Role != Leader {
 		//If not the leader, respond with the leader's address
 		reply.Address = s.LeaderAddress
 		reply.Success = false
@@ -462,22 +467,22 @@ func (s *Node) Command(message *CommandMessage, reply *CommandReply) error {
 	RPCmessage.LeaderID = s.NodeID
 	RPCmessage.LeaderCommit = s.CommitIndex
 	RPCmessage.PrevLogIndex = len(s.Log) - 1
-	if(len(s.Log) == 0) {
+	if len(s.Log) == 0 {
 		RPCmessage.PrevLogTerm = 0
 	} else {
-		RPCmessage.PrevLogTerm = s.Log[len(s.Log) - 1].Term
+		RPCmessage.PrevLogTerm = s.Log[len(s.Log)-1].Term
 	}
 
 	for i := 1; i <= 5; i++ {
-		if(i != s.NodeID) {
+		if i != s.NodeID {
 			go func(i int) {
 				node_success := false
-				for node_success == false {
+				for !node_success {
 					contact_address := RaftNodeAddresses[i]
 
 					//Determine how many entries to send
 					RPCmessage.Entries = []Entry{}
-					if(s.LastApplied > s.NextIndex[i-1]) {
+					if s.LastApplied > s.NextIndex[i-1] {
 						for entry_index := s.NextIndex[i-1]; entry_index < len(s.Log); entry_index++ {
 							RPCmessage.Entries = append(RPCmessage.Entries, s.Log[entry_index])
 						}
@@ -491,7 +496,7 @@ func (s *Node) Command(message *CommandMessage, reply *CommandReply) error {
 						//Just need at least the majority to respond
 					} else {
 						node_term := RPCreply.Term
-						if(node_term > s.CurrentTerm) {
+						if node_term > s.CurrentTerm {
 							//Node is behind and didnt know it yet. Revert to Follower.
 							fmt.Println("Dicover node is behind during Command: Leader -> Follower")
 							s.Role = Follower
@@ -499,7 +504,7 @@ func (s *Node) Command(message *CommandMessage, reply *CommandReply) error {
 							break
 						}
 						node_success = RPCreply.Success
-						if(node_success) {
+						if node_success {
 							applied_to_log++
 							s.NextIndex[i-1] = len(s.Log)
 							s.MatchIndex[i-1] = len(s.Log) - 1
@@ -513,9 +518,9 @@ func (s *Node) Command(message *CommandMessage, reply *CommandReply) error {
 		}
 	}
 
-	for applied_to_log < 3 { 
+	for applied_to_log < 3 {
 		//Wait for the majority to apply the entry
-		//Probably better implemented with a channel
+		//Future work - better implemented with a channel
 	}
 	fmt.Println("\nRecieved positive from majority of nodes to apply command to log")
 	fmt.Println("Applying command to my state table")
@@ -531,7 +536,7 @@ func (s *Node) AppendEntries(message *AppendEntriesMessage, reply *AppendEntries
 	//Ensure term isnt behind
 	term := message.Term
 	reply.Term = s.CurrentTerm
-	if(term < s.CurrentTerm) {
+	if term < s.CurrentTerm {
 		reply.Success = false
 		return nil
 	}
@@ -541,23 +546,22 @@ func (s *Node) AppendEntries(message *AppendEntriesMessage, reply *AppendEntries
 	//Set role to follower in case of a newly elected leader
 	//Only leaders are able to send AppendEntries
 	s.Role = Follower
-	if(s.LeaderAddress != RaftNodeAddresses[message.LeaderID]){
+	if s.LeaderAddress != RaftNodeAddresses[message.LeaderID] {
 		//print("New Leader Address: " + RaftNodeAddresses[message.LeaderID] + "\n")
 	}
 	s.LeaderAddress = RaftNodeAddresses[message.LeaderID]
 	s.CurrentTerm = term
 	s.VotedFor = 0
 
-
-	if(len(message.Entries) != 0) {
+	if len(message.Entries) != 0 {
 		//Check previous log entry
 		prevLogTerm := message.PrevLogTerm
 		prevLogIndex := message.PrevLogIndex
 
 		//Log might be too short to do a lookup
-		if(len(s.Log) < prevLogIndex + 1) {
+		if len(s.Log) < prevLogIndex+1 {
 			//do nothing
-		} else if(s.Log[prevLogIndex].Term != prevLogTerm) {
+		} else if s.Log[prevLogIndex].Term != prevLogTerm {
 			fmt.Println("Replying false in AppendEntries due to term of previous log being different")
 			return nil
 		}
@@ -569,7 +573,7 @@ func (s *Node) AppendEntries(message *AppendEntriesMessage, reply *AppendEntries
 		}
 
 		//fmt.Printf("Length of message.Entries %v\n", len(message.Entries))
-		for i := 0 ; i < len(message.Entries); i++ {
+		for i := 0; i < len(message.Entries); i++ {
 			index := prevLogIndex + i
 			if index < len(s.Log) {
 				//Verify own entries
@@ -585,15 +589,15 @@ func (s *Node) AppendEntries(message *AppendEntriesMessage, reply *AppendEntries
 			}
 		}
 	}
-	
+
 	//Node came back after being unresponsive
-	if(message.Reconstruct == 1) {
+	if message.Reconstruct == 1 {
 		for i := 0; i < len(s.Log); i++ {
 			s.Runnable = true
 			s.STATE_MACHINE_TABLE[s.Log[i].Command.Key] = s.Log[i].Command.Value
 		}
 	}
-	
+
 	//Update commitIndex. This will result in a Node applying an
 	//entry to its state if the leader has already done so
 	s.CommitIndex = message.LeaderCommit
@@ -612,37 +616,37 @@ func (s *Node) RequestVote(message *RequestVoteMessage, reply *RequestVoteReply)
 	reply.Term = s.CurrentTerm
 
 	//Make sure candidate is not behind
-	if(term < s.CurrentTerm) {
+	if term < s.CurrentTerm {
 		reply.VoteGranted = false
 		return nil
 	}
 
-	if(term > s.CurrentTerm) {
+	if term > s.CurrentTerm {
 		s.CurrentTerm = term
 		s.Role = Follower
 	}
-	
+
 	//Compare logs
-	if(s.VotedFor == 0 || s.VotedFor == candidateID) {
+	if s.VotedFor == 0 || s.VotedFor == candidateID {
 		var myLastLogTerm int
-		if(len(s.Log) == 0) {
+		if len(s.Log) == 0 {
 			myLastLogTerm = 1
 		} else {
-			myLastLogTerm = s.Log[len(s.Log) - 1].Term
+			myLastLogTerm = s.Log[len(s.Log)-1].Term
 		}
-		if(lastLogTerm > myLastLogTerm) {
-			if(s.Role != Leader) {
+		if lastLogTerm > myLastLogTerm {
+			if s.Role != Leader {
 				//Candidate is more up-to-date
-				reply.VoteGranted = true 
+				reply.VoteGranted = true
 				s.VotedFor = candidateID
 				s.ElectionTimer = time.Now()
 				return nil
 			}
-		} else if(lastLogTerm == myLastLogTerm) {
+		} else if lastLogTerm == myLastLogTerm {
 			//Last terms match
 			//Longer log wins
-			if(lastLogIndex >= len(s.Log) - 1) {
-				if(s.Role != Leader) {
+			if lastLogIndex >= len(s.Log)-1 {
+				if s.Role != Leader {
 					//Candidate's log is at least as long as reciever's
 					reply.VoteGranted = true
 					s.VotedFor = candidateID
@@ -664,17 +668,18 @@ func (s *Node) RequestVote(message *RequestVoteMessage, reply *RequestVoteReply)
 		return nil
 	}
 
-	return nil	
-}
-
-func (n *Node) Ping(args *Packet, response *Packet) error {
-	pong := "Pong from " + n.Address
-	response.String = pong
-	fmt.Println("Ping requested")
 	return nil
 }
 
-func (n *Node) Dump(args *Packet, response *Packet) error {
+func (n *Node) Ping(args *PingMessage, response *PingMessage) error {
+	pong := "Pong from " + n.Address
+	response.String = pong
+	fmt.Println("Ping requested")
+	fmt.Println()
+	return nil
+}
+
+func (n *Node) Dump(args *DumpMessage, response *DumpMessage) error {
 	//Copies the node and sends it back
 	response.Object = *n
 	return nil
@@ -683,9 +688,14 @@ func (n *Node) Dump(args *Packet, response *Packet) error {
 //---------------// MAIN //---------------//
 
 func main() {
-	print("\nRAFT INTERFACE\n\n")
+
+	fmt.Println()
+	fmt.Print("RAFT INTERFACE")
+	fmt.Println()
+	fmt.Println()
+
 	helpStartup()
-	print("\n")
+	fmt.Println()
 
 	rand.Seed(time.Now().UnixNano())
 
@@ -711,8 +721,8 @@ func main() {
 		case "start":
 			for i := 1; i <= 5; i++ {
 				contact_address := RaftNodeAddresses[i]
-				var args Packet
-				var response Packet
+				var args StartMessage
+				var response StartMessage
 				go func() {
 					if err := call(contact_address, "Node.Start", &args, &response); err != nil {
 						log.Printf("Client call to _Start_: %v\n", err)
@@ -725,13 +735,13 @@ func main() {
 				}()
 			}
 		case "command":
-			if(len(parts) != 3) {
+			if len(parts) != 3 {
 				fmt.Println("usage: command <key> <value>")
 			} else {
 				contact_address := leader_address
 				safeguard := 0
 				var RPCmessage CommandMessage
-				var entry	EntryCommand
+				var entry EntryCommand
 				entry.Key = parts[1]
 				val, err := strconv.Atoi(parts[2])
 				if err != nil {
@@ -743,22 +753,22 @@ func main() {
 
 				complete := false
 
-				for(!complete) {
+				for !complete {
 					time.Sleep(time.Second)
 					var RPCreply CommandReply
 					if err := call(contact_address, "Node.Command", &RPCmessage, &RPCreply); err != nil {
 						contact_address = RaftNodeAddresses[safeguard]
 						safeguard++
-						if safeguard > len(RaftNodeAddresses) - 1 {
+						if safeguard > len(RaftNodeAddresses)-1 {
 							safeguard = 0
 						}
 					} else {
-						if(RPCreply.Address != "") {
+						if RPCreply.Address != "" {
 							fmt.Printf("Rerouting to Leader: %s\n", RPCreply.Address)
 							contact_address = RPCreply.Address
 							leader_address = RPCreply.Address
 						} else {
-							if(RPCreply.Success == true) {
+							if RPCreply.Success {
 								complete = true
 								fmt.Println("\nSuccessfully applied command")
 							} else {
@@ -770,25 +780,27 @@ func main() {
 				}
 			}
 		case "client":
-			if(role_selected != "") {
-				fmt.Println("role has already been selected\n")
+			if role_selected != "" {
+				fmt.Println("role has already been selected")
+				fmt.Println()
 			} else {
 				role_selected = "client"
 				fmt.Println("changed role to client")
 			}
 		case "node":
-			if(role_selected != "") {
-				fmt.Println("role has already been selected\n")
+			if role_selected != "" {
+				fmt.Println("role has already been selected")
+				fmt.Println()
 			} else {
-				if(len(parts) != 2) {
+				if len(parts) != 2 {
 					fmt.Println("usage: node <num>")
 				} else {
 					nodeID, err := strconv.Atoi(parts[1])
 					if err != nil {
-				        fmt.Println("Error in conversion from string to integer:", err)
+						fmt.Println("Error in conversion from string to integer:", err)
 						continue
-				    }
-					if(nodeID == 0 || nodeID > 5) {
+					}
+					if nodeID == 0 || nodeID > 5 {
 						fmt.Println("node number must be between 1 and 5")
 					} else {
 						role_selected = "node"
@@ -797,37 +809,39 @@ func main() {
 				}
 			}
 		case "help":
-			if(role_selected == "client") {
+			if role_selected == "client" {
 				helpClient()
 				helpDescriptions("client")
-			} else if (role_selected == "node") {
+			} else if role_selected == "node" {
 				helpNode()
 				helpDescriptions("node")
 			} else {
 				helpStartup()
 				helpDescriptions("")
 			}
-			break
 		case "quit":
-			fmt.Println("\nquiting...\n")
+			fmt.Println("\nquiting...")
+			fmt.Println()
 			time.Sleep(1 * time.Second)
 			os.Exit(0)
-			break
 		case "exit":
-			fmt.Println("\nquiting...\n")
+			fmt.Println("\nquiting...")
+			fmt.Println()
 			time.Sleep(1 * time.Second)
 			os.Exit(0)
-			break
 		case "ping":
-			if(len(parts) != 2) {
-				fmt.Println("\nUsage: ping <address>\n")
+			if len(parts) != 2 {
+				fmt.Println("\nUsage: ping <address>")
+				fmt.Println()
 			} else {
-				if(role_selected == "client") {
+				if role_selected == "client" {
 					contact_address := "localhost:" + parts[1]
-					var response Packet
-					var args Packet
+					var response PingMessage
+					var args PingMessage
 					if err := call(contact_address, "Node.Ping", &args, &response); err != nil {
 						log.Printf("Client call to _Ping_: %v\n", err)
+						fmt.Println("Note : Requested node might not be availble")
+						fmt.Println()
 					} else {
 						fmt.Printf("%s\n", response.String)
 					}
@@ -835,27 +849,30 @@ func main() {
 					fmt.Println("Only clients are allowed to ping")
 				}
 			}
-			break
 		case "dump":
-			if(len(parts) != 2) {
-				fmt.Println("\nUsage: dump <port>\n")
-			} else if(role_selected == "client") {
+			if len(parts) != 2 {
+				fmt.Println("\nUsage: dump <port>")
+				fmt.Println()
+			} else if role_selected == "client" {
 				contact_address := "localhost:" + parts[1]
-				var response Packet
-				var args Packet
+				var response DumpMessage
+				var args DumpMessage
 				if err := call(contact_address, "Node.Dump", &args, &response); err != nil {
 					log.Printf("Client call to _Dump_: %v\n", err)
+					fmt.Println("Note : Requested node might not be available")
+					fmt.Println()
 				} else {
 					CP := response.Object
 					fmt.Printf("\n\t & NODE %v &\n", CP.NodeID)
-					fmt.Println("-----------------------------\n")
+					fmt.Println("-----------------------------")
+					fmt.Println()
 					fmt.Printf("LeaderAddress: %s\n", CP.LeaderAddress)
 					var r string
-					if(CP.Role == 0) {
+					if CP.Role == 0 {
 						r = "FOLLOWER"
-					} else if(CP.Role == 1) {
+					} else if CP.Role == 1 {
 						r = "CANDIDATE"
-					} else if(CP.Role == 2) {
+					} else if CP.Role == 2 {
 						r = "LEADER"
 					}
 					fmt.Printf("Role: %s\n", r)
@@ -864,7 +881,7 @@ func main() {
 					fmt.Printf("CommitIndex: %v\n", CP.CommitIndex)
 					fmt.Println("\nLOG:")
 					fmt.Println("------")
-					for i:= 0 ; i < len(CP.Log); i++ {
+					for i := 0; i < len(CP.Log); i++ {
 						fmt.Printf("[%v:%v] %s %v\n", CP.Log[i].Term, CP.Log[i].Index, CP.Log[i].Command.Key, CP.Log[i].Command.Value)
 					}
 					fmt.Println("\nState:")
@@ -878,13 +895,13 @@ func main() {
 					fmt.Println()
 				}
 			} else {
-				fmt.Println("A role must first be selected\n")
+				fmt.Println("A role must first be selected")
+				fmt.Println()
 			}
-			break
 		default:
 			fmt.Println("\nUnrecogized command")
-			fmt.Println("Type 'help' to see available commands\n")
-			break
+			fmt.Println("Type 'help' to see available commands")
+			fmt.Println()
 		}
 	}
 	if err := scanner.Err(); err != nil {
